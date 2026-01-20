@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>回家公車 - 即時動態</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -54,7 +56,6 @@
 </head>
 <body class="min-h-screen pb-10">
 
-    <!-- 頁首導覽列 -->
     <header class="bg-blue-900 text-white shadow-md sticky top-0 z-50">
         <div class="max-w-5xl mx-auto px-4 py-3 md:py-5 flex justify-between items-center">
             <div>
@@ -71,20 +72,18 @@
     </header>
 
     <main class="max-w-5xl mx-auto px-4 py-4">
-        
-        <!-- 提醒說明橫幅 -->
         <div id="statusBanner" class="bg-white border-l-4 border-blue-500 p-3 rounded shadow-sm mb-6 flex items-center justify-between text-xs md:text-sm">
             <div class="flex items-center">
                 <i class="fas fa-bell text-blue-500 mr-2"></i>
-                <p class="text-gray-600 font-medium">點擊路線卡片可設定 10 分鐘前到站提醒</p>
+                <div>
+                    <p class="text-gray-600 font-medium">點擊卡片設定 10 分鐘前提醒</p>
+                    <p class="text-[9px] text-blue-600 font-bold tracking-tight">提醒時段限定：17:00 - 17:30</p>
+                </div>
             </div>
             <span class="text-[9px] text-gray-400" id="lastUpdate">尚未更新</span>
         </div>
 
-        <!-- 響應式佈局：手機 1 欄 / 電腦 2 欄 -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-            
-            <!-- 左側區塊：港墘站標題組 -->
             <section>
                 <div class="flex items-center mb-4 space-x-2 px-1">
                     <div class="w-1.5 h-6 bg-blue-700 rounded-full"></div>
@@ -95,7 +94,6 @@
                 </div>
             </section>
 
-            <!-- 右側區塊：內湖運動中心標題組 -->
             <section>
                 <div class="flex items-center mb-4 space-x-2 px-1">
                     <div class="w-1.5 h-6 bg-emerald-600 rounded-full"></div>
@@ -107,16 +105,21 @@
             </section>
         </div>
 
+        <div id="errorAlert" class="hidden mt-6 bg-red-50 border border-red-200 p-4 rounded-xl text-center">
+            <i class="fas fa-exclamation-triangle text-red-500 mb-2"></i>
+            <p class="text-red-700 text-sm font-bold">連線異常</p>
+            <p id="errorMsg" class="text-red-600 text-[10px]">請確認網路連線或 API 設定</p>
+        </div>
+
         <footer class="mt-12 text-center text-gray-400">
             <div class="text-[10px] space-y-1">
                 <p>監控站點：公館山 (往北)</p>
-                <p>數據源：TDX 運輸資料流通服務 · 每 20 秒更新</p>
+                <p>數據源：TDX · 每 20 秒自動更新</p>
             </div>
         </footer>
     </main>
 
     <script>
-        // API 憑證設定
         const API_CREDENTIALS = {
             clientId: 'jombo0116-a41aaae4-e370-47d0',
             clientSecret: '86917c9f-313b-498c-9eda-ab05247dacac'
@@ -142,7 +145,7 @@
         let accessToken = '';
         let countdown = APP_CONFIG.refreshInterval;
         let isFetching = false;
-        let notifications = {}; // 儲存已設定提醒的路線
+        let notifications = {};
 
         window.onload = async () => {
             await startTracker();
@@ -151,12 +154,19 @@
 
         async function startTracker() {
             if (isFetching) return;
-            if (!accessToken) {
-                document.getElementById('apiStatusText').innerText = '正在授權連線...';
-                accessToken = await getAccessToken();
-                if (!accessToken) return;
+            try {
+                if (!accessToken) {
+                    accessToken = await getAccessToken();
+                    if (!accessToken) {
+                        showError("授權失敗，請檢查 API Key");
+                        return;
+                    }
+                }
+                await fetchBusData();
+            } catch (err) {
+                console.error('Tracker Start Error:', err);
+                showError("系統啟動失敗");
             }
-            await fetchBusData();
         }
 
         async function getAccessToken() {
@@ -168,30 +178,47 @@
             });
             try {
                 const response = await fetch(url, { method: 'POST', body: params });
+                if (!response.ok) return null;
                 const data = await response.json();
                 return data.access_token;
             } catch (e) { return null; }
         }
 
         async function fetchBusData() {
+            if (isFetching || !accessToken) return;
             isFetching = true;
             document.getElementById('refreshIcon').classList.add('refresh-spin');
+            
             try {
                 const routeFilter = APP_CONFIG.sections.flatMap(s => s.routes.map(r => `RouteName/Zh_tw eq '${r.id}'`)).join(' or ');
                 const filter = encodeURIComponent(`StopName/Zh_tw eq '${APP_CONFIG.stopName}' and (${routeFilter})`);
                 const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/${APP_CONFIG.city}?$filter=${filter}&$format=JSON`;
 
                 const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-                if (response.status === 401) { accessToken = ''; await startTracker(); return; }
+                
+                if (response.status === 401) { 
+                    accessToken = ''; 
+                    isFetching = false;
+                    await startTracker(); 
+                    return; 
+                }
 
                 const data = await response.json();
-                renderAllSections(data);
-                checkNotifications(data);
                 
-                document.getElementById('lastUpdate').innerText = `最後更新：${new Date().toLocaleTimeString('zh-TW', {hour12:false})}`;
-                document.getElementById('apiStatusText').innerText = '即時監控中';
+                if (Array.isArray(data)) {
+                    renderAllSections(data);
+                    checkNotifications(data);
+                    hideError();
+                    document.getElementById('lastUpdate').innerText = `更新時間：${new Date().toLocaleTimeString('zh-TW', {hour12:false})}`;
+                    document.getElementById('apiStatusText').innerText = '即時監控中';
+                } else {
+                    showError("資料格式不正確");
+                }
+                
                 countdown = APP_CONFIG.refreshInterval;
-            } catch (err) { console.error(err); } finally {
+            } catch (err) { 
+                showError("連線 API 失敗");
+            } finally {
                 isFetching = false;
                 document.getElementById('refreshIcon').classList.remove('refresh-spin');
             }
@@ -199,13 +226,16 @@
 
         function toggleNotification(routeId) {
             if (!("Notification" in window)) {
-                alert("此瀏覽器不支援通知，請加入主畫面後使用。");
+                alert("此瀏覽器不支援通知。");
                 return;
             }
 
             if (Notification.permission !== "granted") {
                 Notification.requestPermission().then(p => {
-                    if (p === "granted") alert("權限已開啟，可以設定提醒了！");
+                    if (p === "granted") {
+                        new Notification("通知已啟用", { body: "現在可以設定 17:00 - 17:30 的到站提醒。" });
+                        startTracker();
+                    }
                 });
                 return;
             }
@@ -214,21 +244,46 @@
                 delete notifications[routeId];
             } else {
                 notifications[routeId] = true;
-                new Notification("設定成功", { body: `當 ${routeId} 於 10 分鐘內抵達時將通知您。` });
+                // 提示使用者設定成功，但會檢查時間
+                const now = new Date();
+                const h = now.getHours();
+                const m = now.getMinutes();
+                if (h === 17 && m <= 30) {
+                    new Notification("提醒已設定", { body: `${routeId} 到站前 10 分鐘將通知您。` });
+                } else {
+                    alert(`${routeId} 提醒已儲存！通知將在下午 17:00 - 17:30 之間觸發。`);
+                }
             }
-            fetchBusData();
+            startTracker();
+        }
+
+        /**
+         * 檢查是否符合 17:00 - 17:30 的發送時間
+         */
+        function isNotificationTime() {
+            const now = new Date();
+            const hours = now.getHours();
+            const minutes = now.getMinutes();
+            // 判斷是否在 17:00 到 17:30 之間
+            return (hours === 17 && minutes >= 0 && minutes <= 30);
         }
 
         function checkNotifications(data) {
+            if (!Array.isArray(data)) return;
+            
+            // 檢查是否在指定時間內，若不在則不執行通知邏輯
+            if (!isNotificationTime()) return;
+
             data.forEach(bus => {
                 if (notifications[bus.RouteName.Zh_tw] && bus.EstimateTime !== undefined) {
                     const mins = Math.floor(bus.EstimateTime / 60);
-                    if (mins <= 10 && mins > 0) {
+                    // 當進入 10 分鐘內的視窗
+                    if (mins <= 10 && mins >= 9) {
                         new Notification("公車快到囉！", {
-                            body: `${bus.RouteName.Zh_tw} 預計 ${mins} 分鐘後到達公館山。`,
+                            body: `${bus.RouteName.Zh_tw} 預計 ${mins} 分鐘後抵達公館山站。`,
                             requireInteraction: true
                         });
-                        delete notifications[bus.RouteName.Zh_tw];
+                        delete notifications[bus.RouteName.Zh_tw]; 
                     }
                 }
             });
@@ -246,8 +301,12 @@
         }
 
         function renderAllSections(data) {
+            if (!Array.isArray(data)) return;
+            
             APP_CONFIG.sections.forEach(section => {
                 const container = document.getElementById(`list-${section.id}`);
+                if (!container) return;
+                
                 container.innerHTML = '';
                 section.routes.forEach(route => {
                     const buses = data.filter(b => b.RouteName.Zh_tw === route.id && b.Direction === route.dir)
@@ -297,8 +356,23 @@
             if (!isFetching && accessToken) {
                 countdown--;
                 if (countdown <= 0) startTracker();
-                document.getElementById('autoUpdateTimer').innerText = `${countdown}s`;
+                const timerEl = document.getElementById('autoUpdateTimer');
+                if (timerEl) timerEl.innerText = `${countdown}s`;
             }
+        }
+
+        function showError(msg) {
+            const alertEl = document.getElementById('errorAlert');
+            const msgEl = document.getElementById('errorMsg');
+            if (alertEl && msgEl) {
+                alertEl.classList.remove('hidden');
+                msgEl.innerText = msg;
+            }
+        }
+
+        function hideError() {
+            const alertEl = document.getElementById('errorAlert');
+            if (alertEl) alertEl.classList.add('hidden');
         }
 
         document.getElementById('refreshBtn').addEventListener('click', startTracker);
