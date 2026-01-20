@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>回家公車 - 即時動態 (LINE Bot 版)</title>
+    <title>回家公車 - 即時動態 (穩定通知版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -52,6 +52,11 @@
             background-color: #eff6ff !important;
             box-shadow: 0 4px 6px -1px rgb(59 130 246 / 0.1);
         }
+
+        /* 螢幕常亮狀態樣式 */
+        .wake-lock-on {
+            color: #10b981 !important;
+        }
     </style>
 </head>
 <body class="min-h-screen pb-10">
@@ -65,6 +70,11 @@
                 <p class="text-[10px] md:text-xs opacity-70" id="apiStatusText">即時數據同步中</p>
             </div>
             <div class="flex items-center space-x-2 md:space-x-4">
+                <!-- 螢幕常亮按鈕 -->
+                <button id="wakeLockBtn" class="flex flex-col items-center justify-center p-2 rounded-lg text-white/50 hover:text-white transition-colors">
+                    <i class="fas fa-lightbulb text-sm"></i>
+                    <span class="text-[8px] mt-0.5">常亮</span>
+                </button>
                 <span id="autoUpdateTimer" class="text-[10px] font-mono bg-black/20 px-2 py-0.5 rounded">--s</span>
                 <button id="refreshBtn" class="w-10 h-10 flex items-center justify-center hover:bg-blue-800 rounded-full transition-colors">
                     <i class="fas fa-sync-alt" id="refreshIcon"></i>
@@ -75,28 +85,12 @@
 
     <main class="max-w-5xl mx-auto px-4 py-4">
         
-        <!-- LINE Messaging API 設定提示 -->
-        <div id="lineConfigBanner" class="bg-green-50 border-l-4 border-green-500 p-3 rounded shadow-sm mb-4 text-xs">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center">
-                    <i class="fab fa-line text-green-600 mr-2 text-lg"></i>
-                    <div>
-                        <p class="text-green-800 font-bold">LINE Messaging API (Bot) 模式</p>
-                        <p class="text-green-700 opacity-80" id="lineStatusText">請至程式碼填入 Access Token 與 User ID</p>
-                    </div>
-                </div>
-                <a href="https://developers.line.biz/console/" target="_blank" class="bg-green-600 text-white px-3 py-1 rounded-full font-bold active:scale-95 transition-transform shrink-0 ml-2">
-                    開發控制台
-                </a>
-            </div>
-        </div>
-
         <div id="statusBanner" class="bg-white border-l-4 border-blue-500 p-3 rounded shadow-sm mb-6 flex items-center justify-between text-xs md:text-sm">
             <div class="flex items-center">
                 <i class="fas fa-bell text-blue-500 mr-2"></i>
                 <div>
                     <p class="text-gray-600 font-medium">點擊卡片設定 10 分鐘前提醒</p>
-                    <p class="text-[9px] text-blue-600 font-bold tracking-tight">提醒時段限定：17:00 - 17:30</p>
+                    <p class="text-[9px] text-blue-600 font-bold tracking-tight">提醒時段：17:00 - 17:30 | 建議開啟螢幕常亮</p>
                 </div>
             </div>
             <span class="text-[9px] text-gray-400" id="lastUpdate">尚未更新</span>
@@ -108,9 +102,7 @@
                     <div class="w-1.5 h-6 bg-blue-700 rounded-full"></div>
                     <h2 class="text-lg font-bold text-gray-800">港墘站</h2>
                 </div>
-                <div id="list-left" class="space-y-3">
-                    <div class="animate-pulse bg-white h-24 rounded-2xl border border-gray-100 shadow-sm"></div>
-                </div>
+                <div id="list-left" class="space-y-3"></div>
             </section>
 
             <section>
@@ -118,12 +110,11 @@
                     <div class="w-1.5 h-6 bg-emerald-600 rounded-full"></div>
                     <h2 class="text-lg font-bold text-gray-800">內湖運動中心</h2>
                 </div>
-                <div id="list-right" class="space-y-3">
-                    <div class="animate-pulse bg-white h-24 rounded-2xl border border-gray-100 shadow-sm"></div>
-                </div>
+                <div id="list-right" class="space-y-3"></div>
             </section>
         </div>
 
+        <!-- 錯誤提示區塊 (先前遺漏的部分) -->
         <div id="errorAlert" class="hidden mt-6 bg-red-50 border border-red-200 p-4 rounded-xl text-center">
             <i class="fas fa-exclamation-triangle text-red-500 mb-2"></i>
             <p class="text-red-700 text-sm font-bold">連線異常</p>
@@ -133,21 +124,16 @@
         <footer class="mt-12 text-center text-gray-400">
             <div class="text-[10px] space-y-1">
                 <p>監控站點：公館山 (往北)</p>
-                <p>數據源：TDX · 提醒僅在平日下班時段觸發</p>
+                <p>數據源：TDX · 如進入背景請點亮螢幕以同步</p>
             </div>
         </footer>
     </main>
 
     <script>
-        // API 憑證設定
         const API_CREDENTIALS = {
             clientId: 'jombo0116-a41aaae4-e370-47d0',
             clientSecret: '86917c9f-313b-498c-9eda-ab05247dacac',
-            // --- LINE Messaging API 設定 ---
-            // 1. 至 LINE Developers Console 建立一個 Provider 與 Messaging API Channel
-            // 2. 在 Messaging API 標籤頁最下方發行「Channel access token」
             lineAccessToken: '', 
-            // 3. 在同一頁面找到你的「Your user ID」 (這是一串以 U 開頭的亂碼)
             lineUserId: '' 
         };
 
@@ -155,15 +141,8 @@
             city: 'Taipei',
             stopName: '公館山',
             sections: [
-                { id: 'left', title: '港墘站', routes: [
-                    { id: '藍7', dest: '故宮', dir: 1 }, 
-                    { id: '藍7副', dest: '故宮', dir: 1 }, 
-                    { id: '藍26', dest: '舊宗路', dir: 1 }
-                ]},
-                { id: 'right', title: '內湖運動中心', routes: [
-                    { id: '551', dest: '捷運昆陽站', dir: 1 }, 
-                    { id: '222', dest: '衡陽路', dir: 1 }
-                ]}
+                { id: 'left', title: '港墘站', routes: [{ id: '藍7', dest: '故宮', dir: 1 }, { id: '藍7副', dest: '故宮', dir: 1 }, { id: '藍26', dest: '舊宗路', dir: 1 }]},
+                { id: 'right', title: '內湖運動中心', routes: [{ id: '551', dest: '捷運昆陽站', dir: 1 }, { id: '222', dest: '衡陽路', dir: 1 }]}
             ],
             refreshInterval: 20
         };
@@ -172,25 +151,66 @@
         let countdown = APP_CONFIG.refreshInterval;
         let isFetching = false;
         let notifications = {};
+        let lastFetchTime = 0;
+        let wakeLock = null;
 
         window.onload = async () => {
-            if (API_CREDENTIALS.lineAccessToken && API_CREDENTIALS.lineUserId) {
-                document.getElementById('lineStatusText').innerText = 'LINE Bot 已設定 (ID: ' + API_CREDENTIALS.lineUserId.slice(0,5) + '...)';
-                document.getElementById('lineStatusText').className = 'text-green-800 font-medium';
-            }
+            // 頁面可見性監測：回到 App 時立即抓取
+            document.addEventListener("visibilitychange", async () => {
+                if (document.visibilityState === 'visible') {
+                    const now = Date.now();
+                    if (now - lastFetchTime > 15000) { // 超過 15 秒沒更新就重抓
+                        await startTracker();
+                    }
+                }
+            });
+
             await startTracker();
             setInterval(tick, 1000);
+            setupWakeLock();
         };
+
+        // 螢幕常亮功能設定
+        async function setupWakeLock() {
+            const btn = document.getElementById('wakeLockBtn');
+            if (!btn) return;
+
+            if ('wakeLock' in navigator) {
+                btn.addEventListener('click', async () => {
+                    if (wakeLock !== null) {
+                        await wakeLock.release();
+                        wakeLock = null;
+                        btn.classList.remove('wake-lock-on');
+                    } else {
+                        try {
+                            wakeLock = await navigator.wakeLock.request('screen');
+                            btn.classList.add('wake-lock-on');
+                            wakeLock.addEventListener('release', () => {
+                                btn.classList.remove('wake-lock-on');
+                                wakeLock = null;
+                            });
+                        } catch (err) {
+                            console.error(`${err.name}, ${err.message}`);
+                        }
+                    }
+                });
+            } else {
+                btn.style.display = 'none'; // 瀏覽器不支援則隱藏
+            }
+        }
 
         async function startTracker() {
             if (isFetching) return;
             try {
+                if (!accessToken) accessToken = await getAccessToken();
                 if (!accessToken) {
-                    accessToken = await getAccessToken();
+                    showError("授權失敗，請檢查 API Key");
+                    return;
                 }
                 await fetchBusData();
-            } catch (err) {
-                showError("系統啟動失敗");
+            } catch (err) { 
+                console.error(err);
+                showError("系統啟動失敗"); 
             }
         }
 
@@ -223,125 +243,92 @@
                 
                 if (response.status === 401) { 
                     accessToken = ''; 
-                    isFetching = false;
+                    isFetching = false; 
                     await startTracker(); 
                     return; 
                 }
 
                 const data = await response.json();
-                
                 if (Array.isArray(data)) {
                     renderAllSections(data);
                     checkNotifications(data);
+                    lastFetchTime = Date.now();
+                    document.getElementById('lastUpdate').innerText = `更新：${new Date().toLocaleTimeString('zh-TW', {hour12:false})}`;
                     hideError();
-                    document.getElementById('lastUpdate').innerText = `更新時間：${new Date().toLocaleTimeString('zh-TW', {hour12:false})}`;
+                } else {
+                    showError("API 回傳格式錯誤");
                 }
-                
                 countdown = APP_CONFIG.refreshInterval;
             } catch (err) { 
-                showError("連線 API 失敗");
+                showError("連線 API 失敗"); 
             } finally {
                 isFetching = false;
                 document.getElementById('refreshIcon').classList.remove('refresh-spin');
             }
         }
 
-        /**
-         * 改用 LINE Messaging API 發送 Push Message
-         * 注意：網頁前端直接呼叫會遇到 CORS 限制，建議透過後端轉發或使用專用的 Proxy
-         */
         async function sendLineBotPush(message) {
             if (!API_CREDENTIALS.lineAccessToken || !API_CREDENTIALS.lineUserId) return;
-
             const url = "https://api.line.me/v2/bot/message/push";
-            
-            // 由於純前端無法處理 LINE 的 CORS 限制，這裡使用一個公開代理做範例
-            // 在實際生產環境，應使用 Cloud Functions 或自己的 Server 做轉發
-            const proxyUrl = "https://cors-anywhere.herokuapp.com/"; 
-
             try {
-                // 如果在本地開發遇到跨域問題，可考慮使用 no-cors 模式 (雖然看不到回應但訊息有機會發出)
-                const payload = {
-                    to: API_CREDENTIALS.lineUserId,
-                    messages: [{ type: "text", text: message }]
-                };
-
+                const payload = { to: API_CREDENTIALS.lineUserId, messages: [{ type: "text", text: message }] };
                 await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${API_CREDENTIALS.lineAccessToken}`
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_CREDENTIALS.lineAccessToken}` },
                     body: JSON.stringify(payload)
                 });
-                console.log("LINE Bot 訊息已發送");
-            } catch (e) {
-                console.error("LINE 發送失敗", e);
-            }
+            } catch (e) { console.error(e); }
         }
 
         function toggleNotification(routeId) {
-            if (!("Notification" in window)) {
-                alert("此瀏覽器不支援原生通知，請將網頁「加入主畫面」後重新開啟。");
-                return;
+            if (!("Notification" in window)) { alert("不支援通知，請加入主畫面"); return; }
+            if (Notification.permission !== "granted") { 
+                Notification.requestPermission().then(p => {
+                    if (p === 'granted') startTracker();
+                }); 
+                return; 
             }
-
-            if (Notification.permission !== "granted") {
-                Notification.requestPermission();
-                return;
-            }
-
             if (notifications[routeId]) {
                 delete notifications[routeId];
             } else {
                 notifications[routeId] = true;
                 const now = new Date();
-                const h = now.getHours();
-                const m = now.getMinutes();
-                
-                const confirmMsg = `準備回家囉，${routeId} 提醒設定成功！`;
-                if (h === 17 && m <= 30) {
-                    new Notification("準備回家囉", { body: confirmMsg });
-                    sendLineBotPush(confirmMsg);
+                if (now.getHours() === 17 && now.getMinutes() <= 30) {
+                    new Notification("準備回家囉", { body: `${routeId} 提醒設定成功！` });
                 } else {
-                    alert(`${routeId} 提醒已儲存！通知將在下午 17:00 - 17:30 之間觸發。`);
+                    alert(`${routeId} 提醒設定成功！將在 17:00 - 17:30 觸發。`);
                 }
             }
-            fetchBusData();
+            renderCurrentList(); // 重新渲染列表以更新鈴鐺狀態
         }
 
-        function isNotificationTime() {
-            const now = new Date();
-            const hours = now.getHours();
-            const minutes = now.getMinutes();
-            return (hours === 17 && minutes >= 0 && minutes <= 30);
+        function renderCurrentList() {
+            // 這個函式會使用最後一次抓到的資料重新渲染 UI，以更新鈴鐺樣式
+            // 實際上 fetchBusData 會呼叫 renderAllSections，這邊僅作樣式同步
+            startTracker(); 
         }
 
         function checkNotifications(data) {
             if (!Array.isArray(data) || !isNotificationTime()) return;
-
             data.forEach(bus => {
                 const routeId = bus.RouteName.Zh_tw;
                 if (notifications[routeId] && bus.EstimateTime !== undefined) {
                     const mins = Math.floor(bus.EstimateTime / 60);
                     if (mins <= 10 && mins >= 9) {
                         let sectionTitle = "";
-                        APP_CONFIG.sections.forEach(s => {
-                            if (s.routes.some(r => r.id === routeId)) sectionTitle = s.title;
-                        });
-
+                        APP_CONFIG.sections.forEach(s => { if (s.routes.some(r => r.id === routeId)) sectionTitle = s.title; });
                         const message = `準備回家囉，${routeId}往${sectionTitle}10分鐘後到達`;
-                        
-                        // 1. 手機原生通知
                         new Notification("準備回家囉", { body: message, requireInteraction: true });
-                        
-                        // 2. LINE Bot 通知
                         sendLineBotPush(message);
-
                         delete notifications[routeId]; 
                     }
                 }
             });
+        }
+
+        function isNotificationTime() {
+            const now = new Date();
+            return (now.getHours() === 17 && now.getMinutes() <= 30);
         }
 
         function formatBusTime(estimateTime, stopStatus) {
@@ -356,12 +343,9 @@
         }
 
         function renderAllSections(data) {
-            if (!Array.isArray(data)) return;
-            
             APP_CONFIG.sections.forEach(section => {
                 const container = document.getElementById(`list-${section.id}`);
                 if (!container) return;
-                
                 container.innerHTML = '';
                 section.routes.forEach(route => {
                     const buses = data.filter(b => b.RouteName.Zh_tw === route.id && b.Direction === route.dir)
@@ -369,23 +353,14 @@
                     const firstBus = buses[0];
                     const secondBus = buses[1];
                     const isNotified = notifications[route.id];
-
                     const card = document.createElement('div');
                     card.className = `bus-card bg-white rounded-2xl shadow-sm border p-4 flex justify-between items-center ${isNotified ? 'notify-active border-blue-400' : 'border-gray-100'}`;
                     card.onclick = () => toggleNotification(route.id);
-
                     const firstTime = formatBusTime(firstBus?.EstimateTime, firstBus?.StopStatus);
                     let statusClass = firstTime.isComing ? 'status-coming font-bold' : (firstTime.isSoon ? 'text-red-500 font-bold' : 'text-blue-700 font-bold');
-
                     let secondBusHtml = secondBus ? 
-                        `<div class="mt-2 flex items-center space-x-2">
-                            <span class="text-[10px] font-bold text-gray-400">下一班</span>
-                            <span class="text-xs text-blue-500 bg-blue-50 px-2 rounded-full border border-blue-100">
-                                ${formatBusTime(secondBus.EstimateTime, secondBus.StopStatus).text}
-                            </span>
-                        </div>` : 
+                        `<div class="mt-2 flex items-center space-x-2"><span class="text-[10px] font-bold text-gray-400">下一班</span><span class="text-xs text-blue-500 bg-blue-50 px-2 rounded-full border border-blue-100">${formatBusTime(secondBus.EstimateTime, secondBus.StopStatus).text}</span></div>` : 
                         `<div class="mt-2 text-[10px] text-gray-300 italic">下一班：暫無即時資訊</div>`;
-
                     card.innerHTML = `
                         <div class="flex flex-col flex-grow">
                             <div class="flex items-center space-x-2">
@@ -393,14 +368,10 @@
                                 <span class="text-gray-800 font-bold text-sm md:text-base">往 ${route.dest}</span>
                                 ${isNotified ? '<i class="fas fa-bell text-blue-500 text-xs animate-bounce"></i>' : ''}
                             </div>
-                            <div class="text-[9px] text-gray-400 mt-2 flex items-center">
-                                <i class="fas fa-bus mr-1 opacity-50"></i>${firstBus?.PlateNumb || '---'}
-                            </div>
+                            <div class="text-[9px] text-gray-400 mt-2 flex items-center"><i class="fas fa-bus mr-1 opacity-50"></i>${firstBus?.PlateNumb || '---'}</div>
                             ${secondBusHtml}
                         </div>
-                        <div class="text-right min-w-[85px] ml-2">
-                            <div class="text-xl md:text-2xl ${statusClass} tracking-tighter">${firstTime.text}</div>
-                        </div>
+                        <div class="text-right min-w-[85px] ml-2"><div class="text-xl md:text-2xl ${statusClass} tracking-tighter">${firstTime.text}</div></div>
                     `;
                     container.appendChild(card);
                 });
@@ -411,25 +382,25 @@
             if (!isFetching && accessToken) {
                 countdown--;
                 if (countdown <= 0) startTracker();
-                const timerEl = document.getElementById('autoUpdateTimer');
-                if (timerEl) timerEl.innerText = `${countdown}s`;
+                const timer = document.getElementById('autoUpdateTimer');
+                if (timer) timer.innerText = `${countdown}s`;
             }
         }
 
-        function showError(msg) {
-            const alertEl = document.getElementById('errorAlert');
-            const msgEl = document.getElementById('errorMsg');
-            if (alertEl && msgEl) {
-                alertEl.classList.remove('hidden');
-                msgEl.innerText = msg;
+        function showError(msg) { 
+            const alert = document.getElementById('errorAlert');
+            const msgBox = document.getElementById('errorMsg');
+            if (alert && msgBox) {
+                alert.classList.remove('hidden'); 
+                msgBox.innerText = msg;
             }
         }
-
-        function hideError() {
-            const alertEl = document.getElementById('errorAlert');
-            if (alertEl) alertEl.classList.add('hidden');
+        
+        function hideError() { 
+            const alert = document.getElementById('errorAlert');
+            if (alert) alert.classList.add('hidden'); 
         }
-
+        
         document.getElementById('refreshBtn').addEventListener('click', startTracker);
     </script>
 </body>
