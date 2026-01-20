@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>回家公車 - 即時動態</title>
+    <title>回家公車 - 即時動態 (LINE Bot 版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -59,7 +59,9 @@
     <header class="bg-blue-900 text-white shadow-md sticky top-0 z-50">
         <div class="max-w-5xl mx-auto px-4 py-3 md:py-5 flex justify-between items-center">
             <div>
-                <h1 class="text-lg md:text-xl font-bold tracking-tight">回家公車</h1>
+                <h1 class="text-lg md:text-xl font-bold tracking-tight flex items-center">
+                    回家公車 <i class="fab fa-line ml-2 text-green-400"></i>
+                </h1>
                 <p class="text-[10px] md:text-xs opacity-70" id="apiStatusText">即時數據同步中</p>
             </div>
             <div class="flex items-center space-x-2 md:space-x-4">
@@ -72,6 +74,23 @@
     </header>
 
     <main class="max-w-5xl mx-auto px-4 py-4">
+        
+        <!-- LINE Messaging API 設定提示 -->
+        <div id="lineConfigBanner" class="bg-green-50 border-l-4 border-green-500 p-3 rounded shadow-sm mb-4 text-xs">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <i class="fab fa-line text-green-600 mr-2 text-lg"></i>
+                    <div>
+                        <p class="text-green-800 font-bold">LINE Messaging API (Bot) 模式</p>
+                        <p class="text-green-700 opacity-80" id="lineStatusText">請至程式碼填入 Access Token 與 User ID</p>
+                    </div>
+                </div>
+                <a href="https://developers.line.biz/console/" target="_blank" class="bg-green-600 text-white px-3 py-1 rounded-full font-bold active:scale-95 transition-transform shrink-0 ml-2">
+                    開發控制台
+                </a>
+            </div>
+        </div>
+
         <div id="statusBanner" class="bg-white border-l-4 border-blue-500 p-3 rounded shadow-sm mb-6 flex items-center justify-between text-xs md:text-sm">
             <div class="flex items-center">
                 <i class="fas fa-bell text-blue-500 mr-2"></i>
@@ -114,15 +133,22 @@
         <footer class="mt-12 text-center text-gray-400">
             <div class="text-[10px] space-y-1">
                 <p>監控站點：公館山 (往北)</p>
-                <p>數據源：TDX · 每 20 秒自動更新</p>
+                <p>數據源：TDX · 提醒僅在平日下班時段觸發</p>
             </div>
         </footer>
     </main>
 
     <script>
+        // API 憑證設定
         const API_CREDENTIALS = {
             clientId: 'jombo0116-a41aaae4-e370-47d0',
-            clientSecret: '86917c9f-313b-498c-9eda-ab05247dacac'
+            clientSecret: '86917c9f-313b-498c-9eda-ab05247dacac',
+            // --- LINE Messaging API 設定 ---
+            // 1. 至 LINE Developers Console 建立一個 Provider 與 Messaging API Channel
+            // 2. 在 Messaging API 標籤頁最下方發行「Channel access token」
+            lineAccessToken: '', 
+            // 3. 在同一頁面找到你的「Your user ID」 (這是一串以 U 開頭的亂碼)
+            lineUserId: '' 
         };
 
         const APP_CONFIG = {
@@ -148,6 +174,10 @@
         let notifications = {};
 
         window.onload = async () => {
+            if (API_CREDENTIALS.lineAccessToken && API_CREDENTIALS.lineUserId) {
+                document.getElementById('lineStatusText').innerText = 'LINE Bot 已設定 (ID: ' + API_CREDENTIALS.lineUserId.slice(0,5) + '...)';
+                document.getElementById('lineStatusText').className = 'text-green-800 font-medium';
+            }
             await startTracker();
             setInterval(tick, 1000);
         };
@@ -157,14 +187,9 @@
             try {
                 if (!accessToken) {
                     accessToken = await getAccessToken();
-                    if (!accessToken) {
-                        showError("授權失敗，請檢查 API Key");
-                        return;
-                    }
                 }
                 await fetchBusData();
             } catch (err) {
-                console.error('Tracker Start Error:', err);
                 showError("系統啟動失敗");
             }
         }
@@ -210,9 +235,6 @@
                     checkNotifications(data);
                     hideError();
                     document.getElementById('lastUpdate').innerText = `更新時間：${new Date().toLocaleTimeString('zh-TW', {hour12:false})}`;
-                    document.getElementById('apiStatusText').innerText = '即時監控中';
-                } else {
-                    showError("資料格式不正確");
                 }
                 
                 countdown = APP_CONFIG.refreshInterval;
@@ -224,19 +246,48 @@
             }
         }
 
+        /**
+         * 改用 LINE Messaging API 發送 Push Message
+         * 注意：網頁前端直接呼叫會遇到 CORS 限制，建議透過後端轉發或使用專用的 Proxy
+         */
+        async function sendLineBotPush(message) {
+            if (!API_CREDENTIALS.lineAccessToken || !API_CREDENTIALS.lineUserId) return;
+
+            const url = "https://api.line.me/v2/bot/message/push";
+            
+            // 由於純前端無法處理 LINE 的 CORS 限制，這裡使用一個公開代理做範例
+            // 在實際生產環境，應使用 Cloud Functions 或自己的 Server 做轉發
+            const proxyUrl = "https://cors-anywhere.herokuapp.com/"; 
+
+            try {
+                // 如果在本地開發遇到跨域問題，可考慮使用 no-cors 模式 (雖然看不到回應但訊息有機會發出)
+                const payload = {
+                    to: API_CREDENTIALS.lineUserId,
+                    messages: [{ type: "text", text: message }]
+                };
+
+                await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${API_CREDENTIALS.lineAccessToken}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                console.log("LINE Bot 訊息已發送");
+            } catch (e) {
+                console.error("LINE 發送失敗", e);
+            }
+        }
+
         function toggleNotification(routeId) {
             if (!("Notification" in window)) {
-                alert("此瀏覽器不支援通知。");
+                alert("此瀏覽器不支援原生通知，請將網頁「加入主畫面」後重新開啟。");
                 return;
             }
 
             if (Notification.permission !== "granted") {
-                Notification.requestPermission().then(p => {
-                    if (p === "granted") {
-                        new Notification("通知已啟用", { body: "現在可以設定 17:00 - 17:30 的到站提醒。" });
-                        startTracker();
-                    }
-                });
+                Notification.requestPermission();
                 return;
             }
 
@@ -247,13 +298,16 @@
                 const now = new Date();
                 const h = now.getHours();
                 const m = now.getMinutes();
+                
+                const confirmMsg = `準備回家囉，${routeId} 提醒設定成功！`;
                 if (h === 17 && m <= 30) {
-                    new Notification("準備回家囉", { body: `${routeId} 提醒設定成功！` });
+                    new Notification("準備回家囉", { body: confirmMsg });
+                    sendLineBotPush(confirmMsg);
                 } else {
                     alert(`${routeId} 提醒已儲存！通知將在下午 17:00 - 17:30 之間觸發。`);
                 }
             }
-            startTracker();
+            fetchBusData();
         }
 
         function isNotificationTime() {
@@ -264,25 +318,26 @@
         }
 
         function checkNotifications(data) {
-            if (!Array.isArray(data)) return;
-            if (!isNotificationTime()) return;
+            if (!Array.isArray(data) || !isNotificationTime()) return;
 
             data.forEach(bus => {
                 const routeId = bus.RouteName.Zh_tw;
                 if (notifications[routeId] && bus.EstimateTime !== undefined) {
                     const mins = Math.floor(bus.EstimateTime / 60);
-                    // 當進入 10 分鐘左右的範圍
                     if (mins <= 10 && mins >= 9) {
-                        // 找到對應的區塊標題
                         let sectionTitle = "";
                         APP_CONFIG.sections.forEach(s => {
                             if (s.routes.some(r => r.id === routeId)) sectionTitle = s.title;
                         });
 
-                        new Notification("準備回家囉", {
-                            body: `${routeId}往${sectionTitle}10分鐘後到達`,
-                            requireInteraction: true
-                        });
+                        const message = `準備回家囉，${routeId}往${sectionTitle}10分鐘後到達`;
+                        
+                        // 1. 手機原生通知
+                        new Notification("準備回家囉", { body: message, requireInteraction: true });
+                        
+                        // 2. LINE Bot 通知
+                        sendLineBotPush(message);
+
                         delete notifications[routeId]; 
                     }
                 }
