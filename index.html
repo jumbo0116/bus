@@ -129,12 +129,12 @@
             city: 'Taipei',
             stopName: '公館山',
             sections: [
-                { id: 'left', routes: [
+                { id: 'left', title: '港墘站', routes: [
                     { id: '藍7', dest: '故宮', dir: 1 }, 
                     { id: '藍7副', dest: '故宮', dir: 1 }, 
                     { id: '藍26', dest: '舊宗路', dir: 1 }
                 ]},
-                { id: 'right', routes: [
+                { id: 'right', title: '內湖運動中心', routes: [
                     { id: '551', dest: '捷運昆陽站', dir: 1 }, 
                     { id: '222', dest: '衡陽路', dir: 1 }
                 ]}
@@ -244,12 +244,11 @@
                 delete notifications[routeId];
             } else {
                 notifications[routeId] = true;
-                // 提示使用者設定成功，但會檢查時間
                 const now = new Date();
                 const h = now.getHours();
                 const m = now.getMinutes();
                 if (h === 17 && m <= 30) {
-                    new Notification("提醒已設定", { body: `${routeId} 到站前 10 分鐘將通知您。` });
+                    new Notification("準備回家囉", { body: `${routeId} 提醒設定成功！` });
                 } else {
                     alert(`${routeId} 提醒已儲存！通知將在下午 17:00 - 17:30 之間觸發。`);
                 }
@@ -257,33 +256,34 @@
             startTracker();
         }
 
-        /**
-         * 檢查是否符合 17:00 - 17:30 的發送時間
-         */
         function isNotificationTime() {
             const now = new Date();
             const hours = now.getHours();
             const minutes = now.getMinutes();
-            // 判斷是否在 17:00 到 17:30 之間
             return (hours === 17 && minutes >= 0 && minutes <= 30);
         }
 
         function checkNotifications(data) {
             if (!Array.isArray(data)) return;
-            
-            // 檢查是否在指定時間內，若不在則不執行通知邏輯
             if (!isNotificationTime()) return;
 
             data.forEach(bus => {
-                if (notifications[bus.RouteName.Zh_tw] && bus.EstimateTime !== undefined) {
+                const routeId = bus.RouteName.Zh_tw;
+                if (notifications[routeId] && bus.EstimateTime !== undefined) {
                     const mins = Math.floor(bus.EstimateTime / 60);
-                    // 當進入 10 分鐘內的視窗
+                    // 當進入 10 分鐘左右的範圍
                     if (mins <= 10 && mins >= 9) {
-                        new Notification("準備回家囉！", {
-                            body: `${bus.RouteName.Zh_tw} 預計 ${mins} 分鐘後抵達公館山站。`,
+                        // 找到對應的區塊標題
+                        let sectionTitle = "";
+                        APP_CONFIG.sections.forEach(s => {
+                            if (s.routes.some(r => r.id === routeId)) sectionTitle = s.title;
+                        });
+
+                        new Notification("準備回家囉", {
+                            body: `${routeId}往${sectionTitle}10分鐘後到達`,
                             requireInteraction: true
                         });
-                        delete notifications[bus.RouteName.Zh_tw]; 
+                        delete notifications[routeId]; 
                     }
                 }
             });
