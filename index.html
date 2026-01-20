@@ -279,7 +279,7 @@
                     const mins = Math.floor(bus.EstimateTime / 60);
                     // 當進入 10 分鐘內的視窗
                     if (mins <= 10 && mins >= 9) {
-                        new Notification("公車快到囉！", {
+                        new Notification("準備回家囉！", {
                             body: `${bus.RouteName.Zh_tw} 預計 ${mins} 分鐘後抵達公館山站。`,
                             requireInteraction: true
                         });
