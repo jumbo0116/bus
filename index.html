@@ -89,7 +89,7 @@
             <div class="flex items-center">
                 <i class="fas fa-bell text-blue-500 mr-2"></i>
                 <div>
-                    <p class="text-gray-600 font-medium">點擊卡片設定 10 分鐘前提醒</p>
+                    <p class="text-gray-600 font-medium">點擊卡片設定 15 分鐘前提醒</p>
                     <p class="text-[9px] text-blue-600 font-bold tracking-tight">提醒時段：17:00 - 17:30 | 建議開啟螢幕常亮</p>
                 </div>
             </div>
@@ -114,7 +114,7 @@
             </section>
         </div>
 
-        <!-- 錯誤提示區塊 (先前遺漏的部分) -->
+        <!-- 錯誤提示區塊 -->
         <div id="errorAlert" class="hidden mt-6 bg-red-50 border border-red-200 p-4 rounded-xl text-center">
             <i class="fas fa-exclamation-triangle text-red-500 mb-2"></i>
             <p class="text-red-700 text-sm font-bold">連線異常</p>
@@ -294,17 +294,15 @@
                 notifications[routeId] = true;
                 const now = new Date();
                 if (now.getHours() === 17 && now.getMinutes() <= 30) {
-                    new Notification("準備回家囉", { body: `${routeId} 提醒設定成功！` });
+                    new Notification("準備回家囉", { body: `${routeId} 提醒設定成功！將於 15 分鐘前通知您。` });
                 } else {
-                    alert(`${routeId} 提醒設定成功！將在 17:00 - 17:30 觸發。`);
+                    alert(`${routeId} 提醒設定成功！將在 17:00 - 17:30 且到站前 15 分鐘時觸發。`);
                 }
             }
-            renderCurrentList(); // 重新渲染列表以更新鈴鐺狀態
+            renderCurrentList(); 
         }
 
         function renderCurrentList() {
-            // 這個函式會使用最後一次抓到的資料重新渲染 UI，以更新鈴鐺樣式
-            // 實際上 fetchBusData 會呼叫 renderAllSections，這邊僅作樣式同步
             startTracker(); 
         }
 
@@ -314,10 +312,11 @@
                 const routeId = bus.RouteName.Zh_tw;
                 if (notifications[routeId] && bus.EstimateTime !== undefined) {
                     const mins = Math.floor(bus.EstimateTime / 60);
-                    if (mins <= 10 && mins >= 9) {
+                    // 改為 15 分鐘提醒門檻
+                    if (mins <= 15 && mins >= 14) {
                         let sectionTitle = "";
                         APP_CONFIG.sections.forEach(s => { if (s.routes.some(r => r.id === routeId)) sectionTitle = s.title; });
-                        const message = `準備回家囉，${routeId}往${sectionTitle}10分鐘後到達`;
+                        const message = `準備回家囉，${routeId}往${sectionTitle}15分鐘後到達`;
                         new Notification("準備回家囉", { body: message, requireInteraction: true });
                         sendLineBotPush(message);
                         delete notifications[routeId]; 
